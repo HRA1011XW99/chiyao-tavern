@@ -57,8 +57,8 @@ const env = {
   TAVERN_KEY_ALIAS: field('alias'),
   TAVERN_KEY_PASSWORD: password,
 };
-// a .bat only runs through the shell; these arguments need no quoting
-run(win ? 'gradlew.bat' : './gradlew', ['--no-daemon', 'testDebugUnitTest', 'assembleRelease'],
+// a .bat only runs through the shell (by full path: cmd may skip the current directory); no argument needs quoting
+run(join(root, 'android', win ? 'gradlew.bat' : 'gradlew'), ['--no-daemon', 'testDebugUnitTest', 'assembleRelease'],
   { cwd: join(root, 'android'), env, shell: win });
 const built = join(root, 'android', 'app', 'build', 'outputs', 'apk', 'release', 'app-release.apk');
 // without a signing config Gradle writes app-release-unsigned.apk instead
