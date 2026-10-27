@@ -42,6 +42,9 @@ class MainActivity : Activity() {
     private val bars = BarsDrawable(SHELL_BG, SHELL_BG)
     private var tavernTop = SHELL_BG
     private var tavernBottom = SHELL_BG
+    private lateinit var sampler: EdgeSampler
+    private var tavernRows: Pair<android.graphics.Bitmap, android.graphics.Bitmap>? = null
+    private var resumed = false
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -56,18 +59,23 @@ class MainActivity : Activity() {
         }
         saver = Saver(this)
         tavern.addJavascriptInterface(saver, "TavernSave")
-        // the last colors SillyTavern reported, so the margins match its theme before the page has loaded
+        // SillyTavern's edge colors from last time, so the margins match its theme before the first sample
         val saved = getSharedPreferences("bars", MODE_PRIVATE)
         tavernTop = saved.getInt("top", SHELL_BG)
         tavernBottom = saved.getInt("bottom", SHELL_BG)
-        tavern.addJavascriptInterface(TavernBars(saver.key) { top, bottom ->
-            runOnUiThread {
-                tavernTop = top
-                tavernBottom = bottom
-                saved.edit().putInt("top", top).putInt("bottom", bottom).apply()
-                applyBars()
+        sampler = EdgeSampler(window, tavern) { top, bottom ->
+            if (shellShown) return@EdgeSampler
+            tavernRows = top to bottom
+            bars.rows(top, bottom)
+            val t = BarsDrawable.average(top)
+            val b = BarsDrawable.average(bottom)
+            BarsDrawable.applyIcons(this, t, b)
+            if (t != tavernTop || b != tavernBottom) {
+                tavernTop = t
+                tavernBottom = b
+                saved.edit().putInt("top", t).putInt("bottom", b).apply()
             }
-        }, "TavernBars")
+        }
         tavern.webViewClient = TavernClient()
         tavern.webChromeClient = TavernChrome()
         tavern.setDownloadListener { url, _, disposition, mime, _ -> download(url, disposition, mime) }
@@ -125,21 +133,40 @@ class MainActivity : Activity() {
         }
     }
 
-    /** The margins take the colors of whichever page is in front */
+    /**
+     * The margins follow whichever page is in front: the shell's own background, or SillyTavern's edges as
+     * sampled from the screen (EdgeSampler; until its first sample, the averages saved last time).
+     */
     private fun applyBars() {
-        val top = if (shellShown) SHELL_BG else tavernTop
-        val bottom = if (shellShown) SHELL_BG else tavernBottom
-        bars.set(top, bottom)
-        BarsDrawable.applyIcons(this, top, bottom)
+        if (shellShown) {
+            sampler.stop()
+            bars.solid(SHELL_BG, SHELL_BG)
+            BarsDrawable.applyIcons(this, SHELL_BG, SHELL_BG)
+            return
+        }
+        val rows = tavernRows
+        if (rows != null) bars.rows(rows.first, rows.second) else bars.solid(tavernTop, tavernBottom)
+        BarsDrawable.applyIcons(this, tavernTop, tavernBottom)
+        // without edge-to-edge (before Android 11) the system draws its own bars and there are no margins
+        if (resumed && Build.VERSION.SDK_INT >= 30) sampler.start()
     }
 
     override fun onResume() {
         super.onResume()
+        resumed = true
+        if (!shellShown && Build.VERSION.SDK_INT >= 30) sampler.start()
         ShellUpdate.resume(this)
+    }
+
+    override fun onPause() {
+        resumed = false
+        sampler.stop()
+        super.onPause()
     }
 
     override fun onDestroy() {
         Tavern.offChange(onTavern)
+        sampler.stop()
         tavern.destroy()
         shell.destroy()
         super.onDestroy()
@@ -214,14 +241,11 @@ class MainActivity : Activity() {
 
     private fun isOwn(uri: Uri) = uri.scheme == "http" && uri.host == "127.0.0.1" && uri.port == Tavern.port
 
-    /** inject/save.js (downloads) and inject/bars.js (theme colors for the margins), keyed for their bridges */
-    private fun injectScripts(view: WebView, url: String) {
+    private fun injectSave(view: WebView, url: String) {
         if (!isOwn(Uri.parse(url))) return
-        for (name in listOf("save.js", "bars.js")) {
-            val js = assets.open("inject/$name").bufferedReader().use { it.readText() }
-                .replace("'__KEY__'", JSONObject.quote(saver.key))
-            view.evaluateJavascript(js, null)
-        }
+        val js = assets.open("inject/save.js").bufferedReader().use { it.readText() }
+            .replace("'__KEY__'", JSONObject.quote(saver.key))
+        view.evaluateJavascript(js, null)
     }
 
     private fun download(url: String, disposition: String?, mime: String?) {
@@ -245,7 +269,7 @@ class MainActivity : Activity() {
 
         override fun onPageFinished(view: WebView, url: String) {
             super.onPageFinished(view, url)
-            injectScripts(view, url)
+            injectSave(view, url)
         }
 
         /** The renderer died (low memory): throw the view's state away and load the page again */
