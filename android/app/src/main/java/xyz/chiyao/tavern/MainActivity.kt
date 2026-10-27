@@ -12,6 +12,7 @@ import android.os.Bundle
 import android.provider.OpenableColumns
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowInsets
 import android.webkit.PermissionRequest
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
@@ -78,11 +79,34 @@ class MainActivity : Activity() {
         root.addView(tavern, full)
         root.addView(shell, FrameLayout.LayoutParams(full))
         setContentView(root)
+        fitBars(root)
 
         Tavern.onChange(onTavern)
         askNotifications()
         if (Prefs(this).onboarded || Store(filesDir).current != null) Tavern.boot(this)
         stateChanged()
+    }
+
+    /**
+     * Android 15 draws apps under the status bar, the navigation bar and the camera cutout (edge-to-edge), and
+     * stops resizing the window for the keyboard. Do the same on every version that allows it and pad the
+     * content by all of them, so neither page has anything under the bars or the keyboard.
+     */
+    private fun fitBars(root: View) {
+        root.setBackgroundColor(0xFF16171B.toInt())
+        if (Build.VERSION.SDK_INT < 30) return
+        window.setDecorFitsSystemWindows(false)
+        @Suppress("DEPRECATION")
+        if (Build.VERSION.SDK_INT < 35) {
+            window.statusBarColor = android.graphics.Color.TRANSPARENT
+            window.navigationBarColor = android.graphics.Color.TRANSPARENT
+        }
+        root.setOnApplyWindowInsetsListener { v, insets ->
+            val bars = insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
+            val ime = insets.getInsets(WindowInsets.Type.ime())
+            v.setPadding(bars.left, bars.top, bars.right, maxOf(bars.bottom, ime.bottom))
+            WindowInsets.CONSUMED
+        }
     }
 
     override fun onResume() {
