@@ -42,7 +42,7 @@ tools/git-android/       交叉编译 git（含 OpenSSL、curl）
 tools/natives.mjs        把编译好的 Node、git、npm 放进 android/build/natives/
 tools/pack-st.sh         打包 SillyTavern（源码 + 生产依赖，带启动冒烟测试）
 tools/manifest.mjs       更新 latest.json
-.github/workflows/       定时打包 SillyTavern；按标签构建 APK
+.github/workflows/       定时打包 SillyTavern
 ```
 
 ### 发布结构
@@ -77,17 +77,24 @@ gh release upload natives android/build/natives.zip --clobber
 
 ```sh
 keytool -genkeypair -v -keystore release.keystore -alias tavern -keyalg RSA -keysize 4096 -validity 36500
-base64 -w0 release.keystore   # 填入 KEYSTORE_BASE64
 ```
 
-在仓库的 Secrets 中设置 `KEYSTORE_BASE64`、`KEYSTORE_PASSWORD`、`KEY_ALIAS`、`KEY_PASSWORD`。
+密钥放在仓库外的 `../chiyao-tavern-signing/`（可用环境变量 `TAVERN_SIGNING_DIR` 改位置），里面是 `release.keystore` 和 `password.txt`：
+
+```text
+alias: tavern
+store/key password: <密码>
+```
 
 ### 发布应用
 
+在本机编译、签名并发布，不经过 CI。先提交并推送代码，再运行：
+
 ```sh
-git tag -a v1.0.1 -m "更新说明（会显示在应用的更新提示里）"
-git push origin v1.0.1
+node tools/release.mjs 1.0.3 "更新说明（会显示在应用的更新提示里）"
 ```
+
+脚本会运行单元测试、编译签名版 APK、推送标签 `v1.0.3`、创建同名 Release，并更新 `manifest` 里的 `latest.json`（versionCode 在上一版基础上加 1）。需要已登录的 `gh`、Java 17，以及 `android/build/natives` 里的 Node 和 git（见上文）。
 
 ### 本地调试
 
@@ -96,4 +103,4 @@ cd android
 ./gradlew testDebugUnitTest assembleDebug
 ```
 
-要让调试版读取本地的 `latest.json`，构建时设置环境变量 `TAVERN_MANIFEST_URL`（模拟器访问电脑用 `http://10.0.2.2:<端口>/latest.json`）。Fork 后发布时，工作流会自动把这个地址指向你自己仓库的 `manifest` Release。
+要让调试版读取本地的 `latest.json`，构建时设置环境变量 `TAVERN_MANIFEST_URL`（模拟器访问电脑用 `http://10.0.2.2:<端口>/latest.json`）。Fork 后发布时，发布脚本会自动把这个地址指向你自己仓库的 `manifest` Release。

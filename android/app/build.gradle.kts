@@ -3,7 +3,7 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
-// Release signing: CI decodes the keystore from a secret and passes it in through the environment.
+// Release signing: tools/release.mjs passes the keystore and its passwords in through the environment.
 // Every release must be signed with the same key, or phones refuse the update.
 val ksFile = System.getenv("TAVERN_KEYSTORE")?.let { file(it) }
 
