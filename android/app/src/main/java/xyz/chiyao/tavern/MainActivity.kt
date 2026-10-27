@@ -39,6 +39,9 @@ class MainActivity : Activity() {
     private var pendingFiles: ValueCallback<Array<Uri>>? = null
     private var pendingMedia: PermissionRequest? = null
     private val onTavern: () -> Unit = { runOnUiThread { stateChanged() } }
+    private val bars = BarsDrawable(SHELL_BG, SHELL_BG)
+    private var tavernTop = SHELL_BG
+    private var tavernBottom = SHELL_BG
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -53,6 +56,18 @@ class MainActivity : Activity() {
         }
         saver = Saver(this)
         tavern.addJavascriptInterface(saver, "TavernSave")
+        // the last colors SillyTavern reported, so the margins match its theme before the page has loaded
+        val saved = getSharedPreferences("bars", MODE_PRIVATE)
+        tavernTop = saved.getInt("top", SHELL_BG)
+        tavernBottom = saved.getInt("bottom", SHELL_BG)
+        tavern.addJavascriptInterface(TavernBars(saver.key) { top, bottom ->
+            runOnUiThread {
+                tavernTop = top
+                tavernBottom = bottom
+                saved.edit().putInt("top", top).putInt("bottom", bottom).apply()
+                applyBars()
+            }
+        }, "TavernBars")
         tavern.webViewClient = TavernClient()
         tavern.webChromeClient = TavernChrome()
         tavern.setDownloadListener { url, _, disposition, mime, _ -> download(url, disposition, mime) }
@@ -93,7 +108,8 @@ class MainActivity : Activity() {
      * content by all of them, so neither page has anything under the bars or the keyboard.
      */
     private fun fitBars(root: View) {
-        root.setBackgroundColor(0xFF16171B.toInt())
+        root.background = bars
+        applyBars()
         if (Build.VERSION.SDK_INT < 30) return
         window.setDecorFitsSystemWindows(false)
         @Suppress("DEPRECATION")
@@ -107,6 +123,14 @@ class MainActivity : Activity() {
             v.setPadding(bars.left, bars.top, bars.right, maxOf(bars.bottom, ime.bottom))
             WindowInsets.CONSUMED
         }
+    }
+
+    /** The margins take the colors of whichever page is in front */
+    private fun applyBars() {
+        val top = if (shellShown) SHELL_BG else tavernTop
+        val bottom = if (shellShown) SHELL_BG else tavernBottom
+        bars.set(top, bottom)
+        BarsDrawable.applyIcons(this, top, bottom)
     }
 
     override fun onResume() {
@@ -160,6 +184,7 @@ class MainActivity : Activity() {
         if (on == shellShown) return
         shellShown = on
         shell.visibility = if (on) View.VISIBLE else View.GONE
+        applyBars()
         if (on) shell.evaluateJavascript("window.onShown && onShown()", null)
     }
 
@@ -189,11 +214,14 @@ class MainActivity : Activity() {
 
     private fun isOwn(uri: Uri) = uri.scheme == "http" && uri.host == "127.0.0.1" && uri.port == Tavern.port
 
-    private fun injectSave(view: WebView, url: String) {
+    /** inject/save.js (downloads) and inject/bars.js (theme colors for the margins), keyed for their bridges */
+    private fun injectScripts(view: WebView, url: String) {
         if (!isOwn(Uri.parse(url))) return
-        val js = assets.open("inject/save.js").bufferedReader().use { it.readText() }
-            .replace("'__KEY__'", JSONObject.quote(saver.key))
-        view.evaluateJavascript(js, null)
+        for (name in listOf("save.js", "bars.js")) {
+            val js = assets.open("inject/$name").bufferedReader().use { it.readText() }
+                .replace("'__KEY__'", JSONObject.quote(saver.key))
+            view.evaluateJavascript(js, null)
+        }
     }
 
     private fun download(url: String, disposition: String?, mime: String?) {
@@ -217,7 +245,7 @@ class MainActivity : Activity() {
 
         override fun onPageFinished(view: WebView, url: String) {
             super.onPageFinished(view, url)
-            injectSave(view, url)
+            injectScripts(view, url)
         }
 
         /** The renderer died (low memory): throw the view's state away and load the page again */
@@ -312,6 +340,8 @@ class MainActivity : Activity() {
 
     companion object {
         const val ACTION_SETTINGS = "xyz.chiyao.tavern.SETTINGS"
+        /** background of the app's own pages (assets/shell/shell.css --bg) */
+        const val SHELL_BG = 0xFF16171B.toInt()
         const val REQ_FILES = 1
         const val REQ_IMPORT = 2
         const val REQ_PLUGIN_ZIP = 3
