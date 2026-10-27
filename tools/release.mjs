@@ -18,20 +18,21 @@ const tag = `v${version}`;
 const win = process.platform === 'win32';
 const run = (cmd, args, opts = {}) => execFileSync(cmd, args, { cwd: root, stdio: 'inherit', ...opts });
 const out = (cmd, args) => execFileSync(cmd, args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
-const tryOut = (cmd, args) => { try { return out(cmd, args); } catch { return null; } };
+// whether a command succeeds; some print nothing when they do
+const ok = (cmd, args) => { try { out(cmd, args); return true; } catch { return false; } };
 
 // what gets released is exactly what is on GitHub
 if (out('git', ['status', '--porcelain', '--untracked-files=no'])) throw new Error('uncommitted changes; commit them first');
 run('git', ['fetch', '-q', 'origin']);
 const head = out('git', ['rev-parse', 'HEAD']);
 if (!out('git', ['branch', '-r', '--contains', head])) throw new Error('HEAD is not pushed; push it first');
-if (tryOut('gh', ['release', 'view', tag, '--json', 'tagName'])) throw new Error(`release ${tag} already exists`);
+if (ok('gh', ['release', 'view', tag])) throw new Error(`release ${tag} already exists`);
 
 const repo = out('gh', ['repo', 'view', '--json', 'nameWithOwner', '-q', '.nameWithOwner']);
 const work = join(root, 'android', 'build', 'release');
 mkdirSync(work, { recursive: true });
 const manifestFile = join(work, 'latest.json');
-if (!tryOut('gh', ['release', 'download', 'manifest', '-p', 'latest.json', '-D', work, '--clobber'])) writeFileSync(manifestFile, '{}\n');
+if (!ok('gh', ['release', 'download', 'manifest', '-p', 'latest.json', '-D', work, '--clobber'])) writeFileSync(manifestFile, '{}\n');
 const manifest = JSON.parse(readFileSync(manifestFile, 'utf8'));
 const versionCode = (manifest.shell?.versionCode || 0) + 1;
 console.log(`${tag}, versionCode ${versionCode}`);
@@ -68,15 +69,15 @@ copyFileSync(built, apk);
 
 const notesFile = join(work, 'notes.txt');
 writeFileSync(notesFile, notes + '\n');
-if (!tryOut('git', ['ls-remote', '--tags', 'origin', `refs/tags/${tag}`])) {
-  if (!tryOut('git', ['rev-parse', '-q', '--verify', `refs/tags/${tag}`])) run('git', ['tag', '-a', tag, '-F', notesFile]);
+if (!out('git', ['ls-remote', '--tags', 'origin', `refs/tags/${tag}`])) {
+  if (!ok('git', ['rev-parse', '-q', '--verify', `refs/tags/${tag}`])) run('git', ['tag', '-a', tag, '-F', notesFile]);
   run('git', ['push', 'origin', tag]);
 }
 run('gh', ['release', 'create', tag, apk, '--title', `吃药酒馆 ${tag}`, '--notes-file', notesFile, '--verify-tag']);
 
 const url = `https://github.com/${repo}/releases/download/${tag}/${apkName}`;
 run('node', [join(root, 'tools', 'manifest.mjs'), manifestFile, 'shell', String(versionCode), version, url, apk, notesFile]);
-if (!tryOut('gh', ['release', 'view', 'manifest', '--json', 'tagName'])) {
+if (!ok('gh', ['release', 'view', 'manifest'])) {
   run('gh', ['release', 'create', 'manifest', '--title', 'Update manifest', '--notes', "latest.json for the app's update check.", '--latest=false']);
 }
 run('gh', ['release', 'upload', 'manifest', manifestFile, '--clobber']);
