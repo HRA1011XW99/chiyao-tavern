@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>吃药酒馆</title>
+<link rel="stylesheet" href="shell.css">
+</head>
+<body>
+
+<!-- start-up: checking, downloading, starting, failed, crashed -->
+<section id="start" class="page center">
+  <div class="brand">吃药酒馆</div>
+  <div class="status">
+    <h1 id="s-message">正在准备</h1>
+    <p id="s-detail" class="muted"></p>
+    <div id="s-bar" class="bar" hidden><i></i></div>
+    <p id="s-bytes" class="muted small"></p>
+  </div>
+  <div id="s-actions" class="actions"></div>
+  <pre id="s-log" class="log" hidden></pre>
+</section>
+
+<!-- first run: before anything is downloaded -->
+<section id="welcome" class="page center" hidden>
+  <div class="brand">吃药酒馆</div>
+  <div class="status">
+    <h1>首次使用</h1>
+    <p id="w-size" class="muted">需要下载 SillyTavern。</p>
+  </div>
+  <div class="actions">
+    <button class="primary" data-act="boot">开始下载</button>
+    <button data-go="network">下载设置</button>
+  </div>
+</section>
+
+<!-- first run: package installed, choose fresh start or import -->
+<section id="onboard" class="page center" hidden>
+  <div class="brand">吃药酒馆</div>
+  <div class="status">
+    <h1>SillyTavern 已就绪</h1>
+    <p class="muted">可以全新开始，也可以导入已有的数据。</p>
+  </div>
+  <div class="actions">
+    <button class="primary" data-act="fresh">全新开始</button>
+    <button data-act="import">从备份导入</button>
+  </div>
+  <p class="muted small">支持 SillyTavern 文件夹、data 文件夹或本应用导出的备份，格式为 zip。</p>
+</section>
+
+<!-- back key on SillyTavern -->
+<section id="menu" class="page center" hidden>
+  <div class="actions">
+    <button class="primary" data-act="tavern">返回 SillyTavern</button>
+    <button data-go="settings">设置</button>
+    <button data-act="background">切换到后台</button>
+    <button class="danger" data-act="quit">退出</button>
+  </div>
+</section>
+
+<section id="settings" class="page" hidden>
+  <header><button class="back" data-back>‹</button><h2>设置</h2></header>
+  <div class="group">
+    <div class="row"><span>吃药酒馆</span><span id="v-shell" class="muted"></span></div>
+    <div class="row"><span>SillyTavern</span><span id="v-st" class="muted"></span></div>
+    <div class="row"><button data-act="check" id="check-btn">检查更新</button></div>
+    <p id="check-result" class="note"></p>
+  </div>
+  <div class="group">
+    <a class="row link" data-go="plugins"><span>服务端插件</span><span>›</span></a>
+    <a class="row link" data-go="network"><span>网络与端口</span><span>›</span></a>
+    <a class="row link" data-go="log"><span>运行日志</span><span>›</span></a>
+  </div>
+  <div class="group">
+    <div class="row"><span>备份</span></div>
+    <div class="row buttons">
+      <button data-act="export">导出到「下载」</button>
+      <button data-act="import">从备份导入</button>
+    </div>
+    <p class="note">导入会替换压缩包中包含的内容，替换前当前数据会自动导出到「下载」。</p>
+  </div>
+  <div class="group">
+    <a class="row link" data-go="about"><span>关于</span><span>›</span></a>
+  </div>
+</section>
+
+<section id="network" class="page" hidden>
+  <header><button class="back" data-back>‹</button><h2>网络与端口</h2></header>
+  <div class="group">
+    <label class="field"><span>GitHub 加速地址</span>
+      <input id="n-prefix" type="url" placeholder="留空则直连" autocomplete="off" autocapitalize="off"></label>
+    <label class="row toggle"><span>克隆 GitHub 仓库时使用加速地址</span><input id="n-git" type="checkbox"></label>
+    <p class="note">用于下载 SillyTavern、安装扩展和插件。</p>
+  </div>
+  <div class="group">
+    <label class="field"><span>npm 源</span>
+      <input id="n-npm" type="url" placeholder="留空则使用官方源" autocomplete="off" autocapitalize="off"></label>
+    <div class="row buttons"><button data-fill="https://registry.npmmirror.com">使用 npmmirror</button></div>
+  </div>
+  <div class="group">
+    <label class="field"><span>端口</span><input id="n-port" type="number" inputmode="numeric" min="1024" max="65535"></label>
+    <p class="note">更换端口后，部分 SillyTavern 界面设置会恢复默认。</p>
+  </div>
+  <p id="n-error" class="error"></p>
+  <div class="actions"><button class="primary" data-act="saveNetwork">保存</button></div>
+</section>
+
+<section id="plugins" class="page" hidden>
+  <header><button class="back" data-back>‹</button><h2>服务端插件</h2></header>
+  <div id="p-restart" class="banner" hidden>
+    <span>修改在重启 SillyTavern 后生效</span><button data-act="restart">立即重启</button>
+  </div>
+  <div class="group">
+    <label class="field"><span>仓库地址</span>
+      <input id="p-url" type="url" placeholder="https://github.com/…" autocomplete="off" autocapitalize="off"></label>
+    <div class="row buttons">
+      <button class="primary" data-act="pluginAdd">安装</button>
+      <button data-act="pluginZip">从 zip 导入</button>
+    </div>
+    <p id="p-busy" class="note"></p>
+    <p id="p-error" class="error"></p>
+    <pre id="p-log" class="log" hidden></pre>
+  </div>
+  <div id="p-list" class="group"></div>
+</section>
+
+<section id="log" class="page" hidden>
+  <header><button class="back" data-back>‹</button><h2>运行日志</h2><button data-act="copyLog">复制</button></header>
+  <pre id="l-text" class="log full"></pre>
+</section>
+
+<section id="about" class="page" hidden>
+  <header><button class="back" data-back>‹</button><h2>关于</h2></header>
+  <div class="group prose">
+    <p>吃药酒馆是 SillyTavern 的非官方安卓封装，与 SillyTavern 项目无关。</p>
+    <p>SillyTavern 与本应用均以 GNU AGPL-3.0 许可证发布。</p>
+    <p><a href="https://github.com/SillyTavern/SillyTavern">SillyTavern 源代码</a></p>
+    <p><a href="https://github.com/HRA1011XW99/chiyao-tavern">吃药酒馆源代码</a></p>
+    <p><a href="https://www.gnu.org/licenses/agpl-3.0.html">AGPL-3.0 许可证全文</a></p>
+  </div>
+</section>
+
+<!-- dialogs -->
+<div id="dialog" class="dialog" hidden>
+  <div class="sheet">
+    <h3 id="d-title"></h3>
+    <p id="d-body"></p>
+    <div id="d-bar" class="bar" hidden><i></i></div>
+    <div id="d-actions" class="actions"></div>
+  </div>
+</div>
+<div id="toast" class="toast" hidden></div>
+
+<script src="shell.js"></script>
+</body>
+</html>

@@ -1,0 +1,66 @@
+# Package SillyTavern's release branch for the app (tools/pack-st.sh) whenever it moves,
+# publish the zip as a release and point latest.json (release "manifest") at it.
+name: SillyTavern package
+
+on:
+  schedule:
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Package even if the release branch has not changed
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: manifest
+  cancel-in-progress: false
+
+env:
+  ST_REPO: https://github.com/SillyTavern/SillyTavern
+  ST_REF: release
+  # oldest app versionCode that can run the package; raise it when a package needs a newer shell
+  MIN_SHELL: ${{ vars.MIN_SHELL || '1' }}
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for a new commit
+        id: check
+        run: |
+          head=$(git ls-remote "$ST_REPO" "refs/heads/$ST_REF" | cut -c1-7)
+          gh release download manifest -p latest.json -D manifest 2>/dev/null || mkdir -p manifest
+          have=$(jq -r '.st.commit // ""' manifest/latest.json 2>/dev/null || true)
+          echo "upstream $head, published ${have:-none}"
+          if [ "$head" = "$have" ] && [ "${{ inputs.force }}" != "true" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-node@v4
+        if: steps.check.outputs.skip != 'true'
+        with:
+          node-version: 24
+
+      - name: Package
+        if: steps.check.outputs.skip != 'true'
+        run: bash tools/pack-st.sh "$ST_REF" "${{ github.run_number }}" out
+
+      - name: Publish
+        if: steps.check.outputs.skip != 'true'
+        run: |
+          file=$(jq -r .file out/st.json)
+          tag="st-$(jq -r .version out/st.json)-$(jq -r .build out/st.json)"
+          gh release create "$tag" "out/$file" --title "SillyTavern $(jq -r .version out/st.json) (build $(jq -r .build out/st.json))" \
+            --notes "SillyTavern $ST_REF @ $(jq -r .commit out/st.json), packaged for the app." --latest=false
+          url="https://github.com/${{ github.repository }}/releases/download/$tag/$file"
+          node tools/manifest.mjs manifest/latest.json st out/st.json "$url"
+          gh release view manifest >/dev/null 2>&1 || \
+            gh release create manifest --title "Update manifest" --notes "latest.json for the app's update check." --latest=false
+          gh release upload manifest manifest/latest.json --clobber
